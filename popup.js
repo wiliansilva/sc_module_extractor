@@ -147,9 +147,22 @@ function renderConfig(data) {
     </div>`
   ).join('');
 
-  let totalFields = data.blocks.reduce((acc, b) => acc + b.fields.length, 0);
+  if (data.kind === 'grid') {
+    const columns = Array.isArray(data.columns) ? data.columns : [];
+    document.getElementById('blockCount').textContent = columns.length;
+    document.getElementById('blockList').innerHTML = columns.map(c =>
+      `<div class="field-item">
+        <span class="field-chip">${c.type}</span>
+        <span>${c.dataIndex}</span>
+      </div>`
+    ).join('');
+    return;
+  }
+
+  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  let totalFields = blocks.reduce((acc, b) => acc + b.fields.length, 0);
   document.getElementById('blockCount').textContent = totalFields;
-  document.getElementById('blockList').innerHTML = data.blocks.map(b =>
+  document.getElementById('blockList').innerHTML = blocks.map(b =>
     `<div style="font-size:11px;color:#7ab3f5;padding:4px 0;border-bottom:1px solid #1a2a3a;font-weight:600">${b.name} (${b.fields.length} campos)</div>` +
     b.fields.map(f =>
       `<div class="field-item" style="padding-left:12px">
