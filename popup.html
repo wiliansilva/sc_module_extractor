@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>SC Module Extractor</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:420px;min-height:300px;font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0}
+.header{background:linear-gradient(135deg,#0f3460,#16213e);padding:16px 20px;border-bottom:2px solid #e94560}
+.header h1{font-size:15px;font-weight:600;color:#fff}
+.header span{font-size:11px;color:#aaa}
+.body{padding:16px}
+.section{margin-bottom:12px}
+.section label{display:block;font-size:11px;color:#aaa;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.section input,.section select{width:100%;padding:7px 10px;background:#16213e;border:1px solid #0f3460;border-radius:6px;color:#e0e0e0;font-size:12px}
+.section input:focus,.section select:focus{outline:none;border-color:#e94560}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{width:100%;padding:10px;background:#e94560;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px}
+.btn:hover{background:#c73652}
+.btn:disabled{background:#555;cursor:not-allowed}
+.btn.secondary{background:#0f3460}
+.btn.secondary:hover{background:#1a4a7a}
+.btn.success{background:#27ae60}
+.btn.success:hover{background:#219150}
+.status{padding:8px 12px;border-radius:6px;font-size:12px;margin-top:8px;display:none}
+.status.info{background:#1a3a5c;border:1px solid #0f3460;display:block}
+.status.success{background:#1a3a2a;border:1px solid #27ae60;display:block;color:#5dca85}
+.status.error{background:#3a1a1a;border:1px solid #e94560;display:block;color:#f87a8a}
+.output-area{background:#0d1117;border:1px solid #0f3460;border-radius:6px;padding:10px;font-family:'Courier New',monospace;font-size:10px;max-height:220px;overflow-y:auto;white-space:pre;color:#a8d8a8;display:none;margin-top:8px;word-break:break-all}
+.progress{height:3px;background:#0f3460;border-radius:2px;margin:8px 0;overflow:hidden}
+.progress-bar{height:100%;background:#e94560;width:0%;transition:width .3s}
+.tab-group{display:flex;gap:4px;margin-bottom:12px}
+.tab-btn{flex:1;padding:6px;font-size:11px;background:#16213e;border:1px solid #0f3460;border-radius:4px;color:#aaa;cursor:pointer}
+.tab-btn.active{background:#e94560;border-color:#e94560;color:white}
+.badge{display:inline-block;background:#0f3460;color:#7ab3f5;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:4px}
+.field-list{max-height:160px;overflow-y:auto}
+.field-item{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #1a2a3a;font-size:11px}
+.field-chip{background:#0f3460;color:#7ab3f5;padding:2px 6px;border-radius:4px;font-size:10px}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>&#128295; SC Module Extractor</h1>
+  <span id="moduleNameDisplay">Aguardando...</span>
+</div>
+<div class="body">
+  <div class="tab-group">
+    <button class="tab-btn active" data-tab="capture">&#128229; Capturar</button>
+    <button class="tab-btn" data-tab="config">&#9881; Campos</button>
+    <button class="tab-btn" data-tab="output">&#128196; JSON</button>
+  </div>
+
+  <div id="tab-capture">
+    <div class="section">
+      <label>M&#243;dulo Detectado</label>
+      <input type="text" id="moduleName" placeholder="Ex: CadParcAdesao" readonly>
+    </div>
+    <div class="row">
+      <div class="section"><label>Kind</label>
+        <select id="kindSelect">
+          <option value="form">form</option>
+          <option value="grid">grid</option>
+          <option value="blank">blank</option>
+          <option value="calendar">calendar</option>
+          <option value="chart">chart</option>
+          <option value="dashboard">dashboard</option>
+          <option value="menu">menu</option>
+        </select>
+      </div>
+      <div class="section"><label>Parent Module</label>
+        <input type="text" id="parentModule" placeholder="Ex: ConsClientesContr">
+      </div>
+    </div>
+    <div class="row">
+      <div class="section"><label>Title</label>
+        <input type="text" id="moduleTitle" placeholder="Ex: Parcelas de Ades&#227;o">
+      </div>
+      <div class="section"><label>Subtitle</label>
+        <input type="text" id="moduleSubtitle" placeholder="Ex: codigo-nome">
+      </div>
+    </div>
+    <div class="row">
+      <div class="section"><label>Params <span class="badge">v&#237;rgula</span></label>
+        <input type="text" id="moduleParams" placeholder="clienteCodigo">
+      </div>
+      <div class="section"><label>Assets <span class="badge">v&#237;rgula</span></label>
+        <input type="text" id="moduleAssets" placeholder="Setores,Planos">
+      </div>
+    </div>
+    <div class="section"><label>Services Path Base</label>
+      <input type="text" id="servicesPath" placeholder="Ex: modules/Client">
+    </div>
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    <button class="btn" id="btnCapture">&#128269; Capturar Dados da P&#225;gina</button>
+    <div class="status info" id="statusMsg">Abra um m&#243;dulo no ScriptCase e clique em Capturar</div>
+  </div>
+
+  <div id="tab-config" style="display:none">
+    <div class="section">
+      <label>Schema Detectado <span class="badge" id="schemaCount">0</span></label>
+      <div class="field-list" id="schemaList"><div style="color:#666;font-size:12px;padding:8px">Capture primeiro...</div></div>
+    </div>
+    <div class="section" style="margin-top:12px">
+      <label>Campos nos Blocos <span class="badge" id="blockCount">0</span></label>
+      <div class="field-list" id="blockList"><div style="color:#666;font-size:12px;padding:8px">Capture primeiro...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-output" style="display:none">
+    <button class="btn success" id="btnCopyJSON">&#128203; Copiar JSON</button>
+    <button class="btn secondary" id="btnDownloadJSON">&#128190; Download JSON</button>
+    <div class="output-area" id="jsonOutput">Nenhum dado capturado ainda...</div>
+  </div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

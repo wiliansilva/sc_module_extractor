@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "ScriptCase Module Extractor",
+  "version": "1.0.0",
+  "description": "Extrai dados de módulos ScriptCase e gera estrutura JSON padronizada",
+  "permissions": [
+    "scripting",
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*/scriptcase/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icon.png", "32": "icon.png", "48": "icon.png", "128": "icon.png" }
+  },
+  "icons": { "16": "icon.png", "32": "icon.png", "48": "icon.png", "128": "icon.png" },
+  "content_scripts": [{
+    "matches": ["*://*/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }]
+}
