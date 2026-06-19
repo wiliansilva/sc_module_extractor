@@ -11,14 +11,18 @@
     // ─────────────────────────────────────────────
 
     function injectAndRun(code) {
-    return new Promise((resolve, reject) => {
-        const requestId = '__sc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-        chrome.runtime.sendMessage({ type: 'EXEC_IN_PAGE', code, requestId }, (res) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (res?.success) resolve(res.result);
-        else reject(new Error(res?.error || 'EXEC_IN_PAGE falhou'));
+        return new Promise((resolve, reject) => {
+            const requestId = '__sc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+            chrome.runtime.sendMessage({
+                type: 'EXEC_IN_PAGE',
+                code,
+                requestId
+            }, (res) => {
+                if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+                if (res?.success) resolve(res.result);
+                else reject(new Error(res?.error || 'EXEC_IN_PAGE falhou'));
+            });
         });
-    });
     }
 
     // ─────────────────────────────────────────────
@@ -74,82 +78,115 @@
     // ─────────────────────────────────────────────
 
     function toPascal(s) {
-    if (!s) return '';
-    return s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+        if (!s) return '';
+        return s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
     }
 
     function toSnake(s) {
-    if (!s) return '';
-    return s.replace(/([A-Z])/g, (m, c, i) => (i > 0 ? '_' : '') + c.toLowerCase());
+        if (!s) return '';
+        return s.replace(/([A-Z])/g, (m, c, i) => (i > 0 ? '_' : '') + c.toLowerCase());
     }
 
     function mapType(html, sql, tipoDado) {
-    const h = (html || '').toUpperCase();
-    const s = (sql || '').toLowerCase();
-    const d = (tipoDado || '').toUpperCase();
-    const dateTypes = new Set(['DATA', 'HORA', 'DATAHORA']);
-    const nonDateHtml = new Set(['TEXT', 'TEXTAREA', 'PASSWORD', 'CHECKBOX', 'CHKBOX', 'SELECT', 'RADIO', 'NUMEROEDT', 'DECIMALEDT', 'LOOKUP']);
-    if (dateTypes.has(d) && !nonDateHtml.has(h)) {
+        const h = (html || '').toUpperCase();
+        const s = (sql || '').toLowerCase();
+        const d = (tipoDado || '').toUpperCase();
+        const dateTypes = new Set(['DATA', 'HORA', 'DATAHORA']);
+        const nonDateHtml = new Set(['TEXT', 'TEXTAREA', 'PASSWORD', 'CHECKBOX', 'CHKBOX', 'SELECT', 'RADIO', 'NUMEROEDT', 'DECIMALEDT', 'LOOKUP']);
+        if (dateTypes.has(d) && !nonDateHtml.has(h)) {
+            if (d === 'DATA') return 'date';
+            if (d === 'HORA') return 'time';
+            if (d === 'DATAHORA') return 'datetime';
+        }
+        if (h === 'CHECKBOX' || h === 'CHKBOX') return 'boolean';
+        if (s === 'integer' || s === 'bigint' || s === 'int' || s === 'smallint') return 'integer';
+        if (s === 'decimal' || s === 'float' || s === 'double' || s === 'numeric') return 'float';
+        if (h === 'NUMEROEDT' || h === 'NUMERO') return 'integer';
+        if (h === 'DECIMALEDT' || h === 'DECIMAL') return 'float';
+        if (h === 'DATE') return 'date';
+        if (h === 'DATETIME') return 'datetime';
+        if (h === 'TIME') return 'time';
+        if (d === 'NUMEROEDT' || d === 'NUMERO') return 'integer';
+        if (d === 'DECIMAL' || d === 'VALOR') return 'float';
         if (d === 'DATA') return 'date';
         if (d === 'HORA') return 'time';
         if (d === 'DATAHORA') return 'datetime';
-    }
-    if (h === 'CHECKBOX' || h === 'CHKBOX') return 'boolean';
-    if (s === 'integer' || s === 'bigint' || s === 'int' || s === 'smallint') return 'integer';
-    if (s === 'decimal' || s === 'float' || s === 'double' || s === 'numeric') return 'float';
-    if (h === 'NUMEROEDT' || h === 'NUMERO') return 'integer';
-    if (h === 'DECIMALEDT' || h === 'DECIMAL') return 'float';
-    if (h === 'DATE') return 'date';
-    if (h === 'DATETIME') return 'datetime';
-    if (h === 'TIME') return 'time';
-    if (d === 'NUMEROEDT' || d === 'NUMERO') return 'integer';
-    if (d === 'DECIMAL' || d === 'VALOR') return 'float';
-    if (d === 'DATA') return 'date';
-    if (d === 'HORA') return 'time';
-    if (d === 'DATAHORA') return 'datetime';
-    return 'string';
+        return 'string';
     }
 
     /** Converte TipoDado/HtmlTipo do ScriptCase para type do JSON Grid */
     function mapGridColumnType(tipoDado, tipoSql) {
-    const d = (tipoDado || '').toUpperCase();
-    const s = (tipoSql || '').toLowerCase();
-    if (d === 'DATA') return 'date';
-    if (d === 'HORA') return 'time';
-    if (d === 'DATAHORA') return 'datetime';
-    if (d === 'NUMEROEDT' || d === 'NUMERO') return 'integer';
-    if (d === 'DECIMAL' || d === 'VALOR' || d === 'PERCENT') return 'float';
-    if (s === 'integer' || s === 'bigint' || s === 'int' || s === 'smallint') return 'integer';
-    if (s === 'decimal' || s === 'float' || s === 'double' || s === 'numeric') return 'float';
-    return 'text';
+        const d = (tipoDado || '').toUpperCase();
+        const s = (tipoSql || '').toLowerCase();
+        if (d === 'DATA') return 'date';
+        if (d === 'HORA') return 'time';
+        if (d === 'DATAHORA') return 'datetime';
+        if (d === 'NUMEROEDT' || d === 'NUMERO') return 'integer';
+        if (d === 'DECIMAL' || d === 'VALOR' || d === 'PERCENT') return 'float';
+        if (s === 'integer' || s === 'bigint' || s === 'int' || s === 'smallint') return 'integer';
+        if (s === 'decimal' || s === 'float' || s === 'double' || s === 'numeric') return 'float';
+        return 'text';
     }
 
     function mapInput(html, tipoDado) {
-    const d = (tipoDado || '').toUpperCase();
-    const semanticMap = {
-        DATA: 'date', HORA: 'time', DATAHORA: 'datetime',
-        NUMEROEDT: 'text', DECIMAL: 'text', VALOR: 'text',
-        MULTITEXTO: 'textarea', CIC: 'text', CNPJ: 'text',
-        CICCNPJ: 'text', TPCICCNPJ: 'text', CEP: 'text',
-        EMAIL: 'text', URL: 'text', CORHTML: 'text',
-        EDITOR_HTML: 'textarea', FORM_IMAGE_HTML: 'file',
-        FORM_LABEL: 'label',
-    };
-    if (d && semanticMap[d]) return semanticMap[d];
-    const map = {
-        TEXT: 'text', TEXTAREA: 'textarea', PASSWORD: 'password',
-        DATE: 'date', DATETIME: 'datetime', TIME: 'time',
-        SELECT: 'select', RADIO: 'radio', CHECKBOX: 'checkbox', CHKBOX: 'checkbox',
-        NUMEROEDT: 'text', NUMERO: 'text', DECIMALEDT: 'text', DECIMAL: 'text',
-        LOOKUP: 'select2', CPFCNPJ: 'text', CEP: 'text',
-        FILE: 'file', IMAGE: 'file', HIDDEN: 'hidden',
-        LABEL: 'label', HYPERLINK: 'link', EMAIL: 'text', URL: 'text',
-    };
-    return map[(html || '').toUpperCase()] || 'text';
+        const d = (tipoDado || '').toUpperCase();
+        const semanticMap = {
+            DATA: 'date',
+            HORA: 'time',
+            DATAHORA: 'datetime',
+            NUMEROEDT: 'text',
+            DECIMAL: 'text',
+            VALOR: 'text',
+            MULTITEXTO: 'textarea',
+            CIC: 'text',
+            CNPJ: 'text',
+            CICCNPJ: 'text',
+            TPCICCNPJ: 'text',
+            CEP: 'text',
+            EMAIL: 'text',
+            URL: 'text',
+            CORHTML: 'text',
+            EDITOR_HTML: 'textarea',
+            FORM_IMAGE_HTML: 'file',
+            FORM_LABEL: 'label',
+        };
+        if (d && semanticMap[d]) return semanticMap[d];
+        const map = {
+            TEXT: 'text',
+            TEXTAREA: 'textarea',
+            PASSWORD: 'password',
+            DATE: 'date',
+            DATETIME: 'datetime',
+            TIME: 'time',
+            SELECT: 'select',
+            RADIO: 'radio',
+            CHECKBOX: 'checkbox',
+            CHKBOX: 'checkbox',
+            NUMEROEDT: 'text',
+            NUMERO: 'text',
+            DECIMALEDT: 'text',
+            DECIMAL: 'text',
+            LOOKUP: 'select2',
+            CPFCNPJ: 'text',
+            CEP: 'text',
+            FILE: 'file',
+            IMAGE: 'file',
+            HIDDEN: 'hidden',
+            LABEL: 'label',
+            HYPERLINK: 'link',
+            EMAIL: 'text',
+            URL: 'text',
+        };
+        return map[(html || '').toUpperCase()] || 'text';
     }
 
     function sendProgress(v) {
-    try { chrome.runtime.sendMessage({ type: 'progress', value: v }); } catch (e) {}
+        try {
+            chrome.runtime.sendMessage({
+                type: 'progress',
+                value: v
+            });
+        } catch (e) {}
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -158,22 +195,22 @@
 
     async function extractGrid(config) {
 
-    // ── 1. Verifica ScriptCase ───────────────────────────────────────
-    const check = await injectAndRun(`
+        // ── 1. Verifica ScriptCase ───────────────────────────────────────
+        const check = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return { ok: false };
         return { ok: true, moduleName: ctx.moduleName };
     `);
-    if (!check?.ok) throw new Error('ScriptCase não encontrado. Abra um módulo Grid no ScriptCase.');
+        if (!check?.ok) throw new Error('ScriptCase não encontrado. Abra um módulo Grid no ScriptCase.');
 
-    const moduleName     = check.moduleName;
-    const moduleNamePascal = config.moduleName || toPascal(moduleName);
-    const prefix         = config.prefix || toSnake(moduleNamePascal);
-    sendProgress(5);
+        const moduleName = check.moduleName;
+        const moduleNamePascal = config.moduleName || toPascal(moduleName);
+        const prefix = config.prefix || toSnake(moduleNamePascal);
+        sendProgress(5);
 
-    // ── 2. Coleta lista de campos do tree (left panel) ───────────────
-    const fieldItems = await injectAndRun(`
+        // ── 2. Coleta lista de campos do tree (left panel) ───────────────
+        const fieldItems = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return [];
@@ -204,11 +241,11 @@
         }).filter(f => f.name && !f.name.startsWith('['));
     `);
 
-    console.log('[GRID] Fields:', (fieldItems || []).map(f => `${f.id}:${f.name}`));
-    sendProgress(12);
+        console.log('[GRID] Fields:', (fieldItems || []).map(f => `${f.id}:${f.name}`));
+        sendProgress(12);
 
-    // ── 3. FieldsEditionDef — colunas visíveis + labels + tipos + width ─
-    const editionResult = await injectAndRun(`
+        // ── 3. FieldsEditionDef — colunas visíveis + labels + tipos + width ─
+        const editionResult = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -266,16 +303,16 @@
         return { fields, order };
     `);
 
-    sendProgress(30);
+        sendProgress(30);
 
-    // ── 4. Detalhes por campo (tipo SQL, largura da coluna) ──────────
-    // Navega em cada campo para pegar Tipo_Sql e Char_Col_Largura
-    const fieldDetails = {};
-    const toCapture    = Array.isArray(fieldItems) ? fieldItems.slice(0, 60) : [];
+        // ── 4. Detalhes por campo (tipo SQL, largura da coluna) ──────────
+        // Navega em cada campo para pegar Tipo_Sql e Char_Col_Largura
+        const fieldDetails = {};
+        const toCapture = Array.isArray(fieldItems) ? fieldItems.slice(0, 60) : [];
 
-    for (let i = 0; i < toCapture.length; i++) {
-        const f = toCapture[i];
-        const detail = await injectAndRun(`
+        for (let i = 0; i < toCapture.length; i++) {
+            const f = toCapture[i];
+            const detail = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -313,15 +350,15 @@
         return { tipoDado, tipoSql, label, colWidth, options, lookupSql };
         `);
 
-        if (detail) {
-        fieldDetails[f.name] = detail;
-        console.log('[GRID] field', f.name, '| tipo:', detail.tipoDado, '| sql:', detail.tipoSql, '| colW:', detail.colWidth);
+            if (detail) {
+                fieldDetails[f.name] = detail;
+                console.log('[GRID] field', f.name, '| tipo:', detail.tipoDado, '| sql:', detail.tipoSql, '| colW:', detail.colWidth);
+            }
+            sendProgress(30 + Math.round((i + 1) / toCapture.length * 30));
         }
-        sendProgress(30 + Math.round((i + 1) / toCapture.length * 30));
-    }
 
-    // ── 5. SQL Settings ──────────────────────────────────────────────
-    const sqlResult = await injectAndRun(`
+        // ── 5. SQL Settings ──────────────────────────────────────────────
+        const sqlResult = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -333,11 +370,11 @@
         formParams: _domGet(rd, 'FormParams')    || '',
         };
     `);
-    console.log('[GRID] SQL connection:', sqlResult?.connection);
-    sendProgress(65);
+        console.log('[GRID] SQL connection:', sqlResult?.connection);
+        sendProgress(65);
 
-    // ── 6. Settings (cons) — paginação, quickSearch, selectable ─────
-    const consResult = await injectAndRun(`
+        // ── 6. Settings (cons) — paginação, quickSearch, selectable ─────
+        const consResult = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -354,10 +391,10 @@
 
         return { paginaMode, paginaNumero, modulesCons, rulesGroupRaw };
     `);
-    sendProgress(72);
+        sendProgress(72);
 
-    // ── 7. Toolbar — detecta QuickSearch e botões ativos ────────────
-    const toolbarResult = await injectAndRun(`
+        // ── 7. Toolbar — detecta QuickSearch e botões ativos ────────────
+        const toolbarResult = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -375,11 +412,11 @@
 
         return { topItems, hasQuickSearch, hasSelectAll };
     `);
-    sendProgress(80);
+        sendProgress(80);
 
-    // ── 8. Application Links — rowActions ───────────────────────────
-    // Os links de aplicação do ScriptCase correspondem aos rowActions do Grid JSON
-    const appLinksResult = await injectAndRun(`
+        // ── 8. Application Links — rowActions ───────────────────────────
+        // Os links de aplicação do ScriptCase correspondem aos rowActions do Grid JSON
+        const appLinksResult = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return [];
@@ -418,11 +455,11 @@
         }).filter(l => l.label || l.target);
     `);
 
-    console.log('[GRID] AppLinks:', appLinksResult);
-    sendProgress(88);
+        console.log('[GRID] AppLinks:', appLinksResult);
+        sendProgress(88);
 
-    // ── 9. Group By — grouplabels ────────────────────────────────────
-    const groupByResult = await injectAndRun(`
+        // ── 9. Group By — grouplabels ────────────────────────────────────
+        const groupByResult = await injectAndRun(`
     ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -451,141 +488,148 @@
         return { groupFields, titulo };
     `);
 
-    console.log('[GRID] GroupBy:', groupByResult);
-    sendProgress(94);
+        console.log('[GRID] GroupBy:', groupByResult);
+        sendProgress(94);
 
-    // ── 10. Monta o JSON final ───────────────────────────────────────
+        // ── 10. Monta o JSON final ───────────────────────────────────────
 
-    const base   = config.servicesPath || ('modules/' + moduleNamePascal);
-    const sp     = toSnake(moduleNamePascal);
-    const params = config.params
-        ? config.params.split(',').map(p => p.trim()).filter(Boolean)
-        : (sqlResult?.formParams || '').split(',').map(p => p.trim()).filter(Boolean);
+        const base = config.servicesPath || ('modules/' + moduleNamePascal);
+        const sp = toSnake(moduleNamePascal);
+        const params = config.params ?
+            config.params.split(',').map(p => p.trim()).filter(Boolean) :
+            (sqlResult?.formParams || '').split(',').map(p => p.trim()).filter(Boolean);
 
-    // Paginação
-    const paginaMode = consResult?.paginaMode || '1';
-    // 1=server, 2=client, 3=lazy
-    const paginationMap = { '1': 'server', '2': 'client', '3': 'lazy' };
-    const pagination    = paginationMap[paginaMode] || 'server';
-
-    // Campos visíveis na ordem da FieldsEditionDef
-    const edition = editionResult || { fields: {}, order: [] };
-    const visibleFieldIds = edition.order.filter(fId => edition.fields[fId]?.visible);
-
-    // Monta columns — usa detalhe por campo para tipo
-    const columns = visibleFieldIds.map(fId => {
-        const ed   = edition.fields[fId] || {};
-        const name = ed.name || fId;
-        const det  = fieldDetails[name] || {};
-
-        const type = mapGridColumnType(det.tipoDado || ed.tipoDado, det.tipoSql);
-
-        // Width: prioridade → Char_Col_Largura do detalhe → width do FieldsEditionDef
-        const width = (det.colWidth && det.colWidth > 0) ? det.colWidth
-                    : (ed.width && ed.width > 0)         ? ed.width
-                    : undefined;
-
-        const col = {
-        dataIndex: name,
-        title:     (det.label || ed.label || name).replace(/[{}]/g, ''),
-        type,
+        // Paginação
+        const paginaMode = consResult?.paginaMode || '1';
+        // 1=server, 2=client, 3=lazy
+        const paginationMap = {
+            '1': 'server',
+            '2': 'client',
+            '3': 'lazy'
         };
-        if (width) col.width = width;
-        if (det.options?.length) col.options = det.options;
-        if (det.lookupSql)       col.lookupSql = det.lookupSql;
-        return col;
-    });
+        const pagination = paginationMap[paginaMode] || 'server';
 
-    // rowKey — primeiro campo com isPK ou primeiro campo numérico (ID-like)
-    let rowKey = config.rowKey || '';
-    if (!rowKey) {
-        // Heurística: campo chamado "Id", "*Codigo*", "*Code*", primeiro inteiro
-        const intFields = Object.values(edition.fields)
-        .filter(f => mapGridColumnType(fieldDetails[f.name]?.tipoDado, fieldDetails[f.name]?.tipoSql) === 'integer');
-        const pkCandidate = intFields.find(f => /^id$/i.test(f.name))
-                        || intFields.find(f => /id$|codigo$|code$|key$/i.test(f.name))
-                        || intFields[0];
-        rowKey = pkCandidate?.name || (columns[0]?.dataIndex || 'Id');
-    }
+        // Campos visíveis na ordem da FieldsEditionDef
+        const edition = editionResult || {
+            fields: {},
+            order: []
+        };
+        const visibleFieldIds = edition.order.filter(fId => edition.fields[fId]?.visible);
 
-    // rowActions
-    const rowActions = (Array.isArray(appLinksResult) ? appLinksResult : []).map(lnk => {
-        // Tenta mapear label/icon para o padrão do JSON alvo
-        const label = lnk.label || '';
-        const iconGuess = lnk.icon
-        ? (lnk.icon.startsWith('fa') ? lnk.icon : `fa${lnk.icon.replace(/[^a-zA-Z]/g,'').replace(/^./, c => c.toUpperCase())}`)
-        : (label.toLowerCase().includes('edit')    ? 'faEdit'
-        : label.toLowerCase().includes('detalhes') || label.toLowerCase().includes('ver') ? 'faSearch'
-        : label.toLowerCase().includes('excluir')  || label.toLowerCase().includes('delet') ? 'faTrash'
-        : 'faLink');
+        // Monta columns — usa detalhe por campo para tipo
+        const columns = visibleFieldIds.map(fId => {
+            const ed = edition.fields[fId] || {};
+            const name = ed.name || fId;
+            const det = fieldDetails[name] || {};
+
+            const type = mapGridColumnType(det.tipoDado || ed.tipoDado, det.tipoSql);
+
+            // Width: prioridade → Char_Col_Largura do detalhe → width do FieldsEditionDef
+            const width = (det.colWidth && det.colWidth > 0) ? det.colWidth :
+                (ed.width && ed.width > 0) ? ed.width :
+                undefined;
+
+            const col = {
+                dataIndex: name,
+                title: (det.label || ed.label || name).replace(/[{}]/g, ''),
+                type,
+            };
+            if (width) col.width = width;
+            if (det.options?.length) col.options = det.options;
+            if (det.lookupSql) col.lookupSql = det.lookupSql;
+            return col;
+        });
+
+        // rowKey — primeiro campo com isPK ou primeiro campo numérico (ID-like)
+        let rowKey = config.rowKey || '';
+        if (!rowKey) {
+            // Heurística: campo chamado "Id", "*Codigo*", "*Code*", primeiro inteiro
+            const intFields = Object.values(edition.fields)
+                .filter(f => mapGridColumnType(fieldDetails[f.name]?.tipoDado, fieldDetails[f.name]?.tipoSql) === 'integer');
+            const pkCandidate = intFields.find(f => /^id$/i.test(f.name)) ||
+                intFields.find(f => /id$|codigo$|code$|key$/i.test(f.name)) ||
+                intFields[0];
+            rowKey = pkCandidate?.name || (columns[0]?.dataIndex || 'Id');
+        }
+
+        // rowActions
+        const rowActions = (Array.isArray(appLinksResult) ? appLinksResult : []).map(lnk => {
+            // Tenta mapear label/icon para o padrão do JSON alvo
+            const label = lnk.label || '';
+            const iconGuess = lnk.icon ?
+                (lnk.icon.startsWith('fa') ? lnk.icon : `fa${lnk.icon.replace(/[^a-zA-Z]/g,'').replace(/^./, c => c.toUpperCase())}`) :
+                (label.toLowerCase().includes('edit') ? 'faEdit' :
+                    label.toLowerCase().includes('detalhes') || label.toLowerCase().includes('ver') ? 'faSearch' :
+                    label.toLowerCase().includes('excluir') || label.toLowerCase().includes('delet') ? 'faTrash' :
+                    'faLink');
+            return {
+                icon: iconGuess,
+                tooltip: label,
+                opens: lnk.target || '',
+            };
+        });
+
+        // quickSearch — detectado pela presença do botão na toolbar
+        const quickSearchEnabled = toolbarResult?.hasQuickSearch ?? false;
+
+        // filter — se "filter" está em modules_cons
+        const filterEnabled = (consResult?.modulesCons || '').includes('filter');
+
+        // selectable — se toolbar tem select-all ou config indica
+        const selectable = toolbarResult?.hasSelectAll ?? false;
+
+        // groupBy — monta array a partir dos campos de grupo detectados
+        const groupBy = (groupByResult?.groupFields || []).map(g => ({
+            key: g.name || g.fieldId,
+        }));
+
+        // schema — todos os campos (para uso em forms filhos, relatórios etc.)
+        const schema = (Array.isArray(fieldItems) ? fieldItems : []).map(f => {
+            const det = fieldDetails[f.name] || {};
+            const ed = edition.fields[
+                Object.keys(edition.fields).find(k => edition.fields[k].name === f.name)
+            ] || {};
+            const type = mapGridColumnType(det.tipoDado || ed.tipoDado, det.tipoSql);
+            return {
+                field: f.name,
+                type,
+                visible: ed.visible ?? true,
+            };
+        });
+
+        sendProgress(100);
+
         return {
-        icon:    iconGuess,
-        tooltip: label,
-        opens:   lnk.target || '',
+            kind: 'grid',
+            module: {
+                name: moduleNamePascal,
+                title: config.title || moduleNamePascal,
+                prefix,
+                connection: sqlResult?.connection || '',
+                params,
+                assets: config.assets ?
+                    config.assets.split(',').map(a => a.trim()).filter(Boolean) :
+                    [],
+            },
+            service: {
+                name: sp + '_list',
+                path: base + '/' + sp + '_list',
+                resultType: config.resultType || (moduleNamePascal + 'Result'),
+            },
+            pagination,
+            rowKey,
+            rowActions: rowActions.length ? rowActions : undefined,
+            columns,
+            filter: {
+                enabled: filterEnabled,
+            },
+            quickSearch: {
+                enabled: quickSearchEnabled,
+            },
+            groupBy: groupBy.length ? groupBy : undefined,
+            selectable,
+            schema,
         };
-    });
-
-    // quickSearch — detectado pela presença do botão na toolbar
-    const quickSearchEnabled = toolbarResult?.hasQuickSearch ?? false;
-
-    // filter — se "filter" está em modules_cons
-    const filterEnabled = (consResult?.modulesCons || '').includes('filter');
-
-    // selectable — se toolbar tem select-all ou config indica
-    const selectable = toolbarResult?.hasSelectAll ?? false;
-
-    // groupBy — monta array a partir dos campos de grupo detectados
-    const groupBy = (groupByResult?.groupFields || []).map(g => ({
-        key: g.name || g.fieldId,
-    }));
-
-    // schema — todos os campos (para uso em forms filhos, relatórios etc.)
-    const schema = (Array.isArray(fieldItems) ? fieldItems : []).map(f => {
-        const det  = fieldDetails[f.name] || {};
-        const ed   = edition.fields[
-        Object.keys(edition.fields).find(k => edition.fields[k].name === f.name)
-        ] || {};
-        const type = mapGridColumnType(det.tipoDado || ed.tipoDado, det.tipoSql);
-        return {
-        field:   f.name,
-        type,
-        visible: ed.visible ?? true,
-        };
-    });
-
-    sendProgress(100);
-
-    return {
-        kind: 'grid',
-        module: {
-        name:       moduleNamePascal,
-        title:      config.title || moduleNamePascal,
-        prefix,
-        connection: sqlResult?.connection || '',
-        params,
-        assets: config.assets
-            ? config.assets.split(',').map(a => a.trim()).filter(Boolean)
-            : [],
-        },
-        service: {
-        name:       sp + '_list',
-        path:       base + '/' + sp + '_list',
-        resultType: config.resultType || (moduleNamePascal + 'Result'),
-        },
-        pagination,
-        rowKey,
-        rowActions: rowActions.length ? rowActions : undefined,
-        columns,
-        filter: {
-        enabled: filterEnabled,
-        },
-        quickSearch: {
-        enabled: quickSearchEnabled,
-        },
-        groupBy:   groupBy.length ? groupBy : undefined,
-        selectable,
-        schema,
-    };
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -595,21 +639,21 @@
     async function extract(config) {
 
         // ── 1. Verifica se ScriptCase está aberto ─────────────────────────────────
-  const check = await injectAndRun(`
+        const check = await injectAndRun(`
 ${PAGE_HELPERS}
     const ctx = _getCtx();
     if (!ctx) return { ok: false };
     return { ok: true, moduleName: ctx.moduleName };
   `);
-  if (!check?.ok) throw new Error('ScriptCase não encontrado. Abra um módulo no ScriptCase.');
+        if (!check?.ok) throw new Error('ScriptCase não encontrado. Abra um módulo no ScriptCase.');
 
         const moduleName = check.moduleName;
-  const moduleNamePascal = config.moduleName || toPascal(moduleName);
+        const moduleNamePascal = config.moduleName || toPascal(moduleName);
         const prefix = config.prefix || toSnake(moduleNamePascal);
-  sendProgress(5);
+        sendProgress(5);
 
         // ── 2. Expande fields_tit e coleta lista de campos ────────────────────────
-  const fieldsResult = await injectAndRun(`
+        const fieldsResult = await injectAndRun(`
 ${PAGE_HELPERS}
     const ctx = _getCtx();
     if (!ctx) return [];
@@ -643,18 +687,18 @@ ${PAGE_HELPERS}
     }).filter(f => f.name && !f.name.startsWith('['));
   `);
 
-  const fieldItems = Array.isArray(fieldsResult) ? fieldsResult : [];
-  console.log('[EXTRACTOR] Campos:', fieldItems.map(f => `${f.id}:${f.name}`));
-  sendProgress(12);
+        const fieldItems = Array.isArray(fieldsResult) ? fieldsResult : [];
+        console.log('[EXTRACTOR] Campos:', fieldItems.map(f => `${f.id}:${f.name}`));
+        sendProgress(12);
 
         // ── 3. Coleta detalhes de cada campo via nm_update_menu ───────────────────
-  const details = {};
-  const toCapture = fieldItems.slice(0, 60);
-  const OPTION_INPUT_TYPES = new Set(['SELECT', 'RADIO', 'CHECKBOX', 'CHKBOX', 'SELECT2', 'LOOKUP']);
+        const details = {};
+        const toCapture = fieldItems.slice(0, 60);
+        const OPTION_INPUT_TYPES = new Set(['SELECT', 'RADIO', 'CHECKBOX', 'CHKBOX', 'SELECT2', 'LOOKUP']);
 
-  for (let i = 0; i < toCapture.length; i++) {
-    const f = toCapture[i];
-    const fieldData = await injectAndRun(`
+        for (let i = 0; i < toCapture.length; i++) {
+            const f = toCapture[i];
+            const fieldData = await injectAndRun(`
 ${PAGE_HELPERS}
       const ctx = _getCtx();
       if (!ctx) return null;
@@ -708,7 +752,7 @@ ${PAGE_HELPERS}
       return { htmlTipo, tipoSql, tipoDado, label, valInicial, required, options, lookupSql };
     `);
 
-    if (fieldData) {
+            if (fieldData) {
                 details[f.name] = {
                     name: f.name,
                     ...fieldData
@@ -720,12 +764,12 @@ ${PAGE_HELPERS}
                     '| options:', fieldData.options ? fieldData.options.length + 'x' : '-',
                     '| sql:', fieldData.lookupSql ? 'SQL' : '-'
                 );
-    }
-    sendProgress(12 + Math.round((i + 1) / toCapture.length * 50));
-  }
+            }
+            sendProgress(12 + Math.round((i + 1) / toCapture.length * 50));
+        }
 
         // ── 4. Blocks Settings: nm_update_menu('app', 'blockdef') ────────────────
-  const blockResult = await injectAndRun(`
+        const blockResult = await injectAndRun(`
 ${PAGE_HELPERS}
     const ctx = _getCtx();
     if (!ctx) return null;
