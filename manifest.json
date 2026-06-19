@@ -6,7 +6,8 @@
   "permissions": [
     "scripting",
     "webNavigation",
-    "tabs"
+    "tabs",
+    "activeTab"
   ],
   "host_permissions": [
     "*://*/scriptcase/*"

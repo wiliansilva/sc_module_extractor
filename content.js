@@ -228,38 +228,136 @@
       sendProgress(12 + Math.round((i + 1) / toCapture.length * 50));
     }
 
-    // ── 4. Coleta blocos via nm_update_menu('app', 'blockdef') ───────────────
+    // ── 4. Blocks Settings: nm_update_menu('app', 'blockdef') ────────────────
     const blockResult = await injectAndRun(`
-      ${PAGE_HELPERS}
-      const ctx = _getCtx();
-      if (!ctx) return null;
-      const leftWin  = ctx.leftIframe.contentWindow;
-      const rightIfr = ctx.rightIframe;
-      await _callMenu(leftWin, rightIfr, ['app', 'blockdef'], 2000);
-      const rd = rightIfr.contentDocument;
+        ${PAGE_HELPERS}
+        const ctx = _getCtx();
+        if (!ctx) return null;
+        await _callMenu(ctx.leftIframe.contentWindow, ctx.rightIframe, ['app', 'blockdef'], 2500);
+        const rd = ctx.rightIframe.contentDocument;
 
-      // Lê blocos via t_nome[N]
-      const blocks = [];
-      let idx = 0;
-      while (true) {
-        const nomeEl = rd.querySelector('[name="t_nome[' + idx + ']"]');
-        if (!nomeEl) break;
-        blocks.push({
-          name:    nomeEl.value || ('Bloco ' + (idx+1)),
-          title:   _domGet(rd, 't_texto[' + idx + ']') || nomeEl.value,
-          columns: parseInt(_domGet(rd, 'l_colunas[' + idx + ']') || '2') || 2,
-          fields:  [],
+        // Lê todos os blocos: t_nome[N] existe para cada bloco
+        // Os índices N NÃO são sequenciais (ex: 14, 0, 24, 25...) — são IDs internos
+        // Precisamos varrer os inputs com name="t_nome[*]"
+        const blocks = [];
+        const nomeEls = Array.from(rd.querySelectorAll('input[name^="t_nome["]'));
+        nomeEls.forEach(nomeEl => {
+            const match = nomeEl.name.match(/t_nome\[(\d+)\]/);
+            if (!match) return;
+            const idx = match[1];
+            blocks.push({
+            idx,                   // índice interno do ScriptCase
+            name:    nomeEl.value || ('Bloco_' + idx),
+            title:   _domGet(rd, 't_texto[' + idx + ']') || nomeEl.value,
+            columns: parseInt(_domGet(rd, 'l_colunas[' + idx + ']') || '2') || 2,
+            exibe:   _domGet(rd, 't_exibe[' + idx + ']')    || 'S',
+            largura: _domGet(rd, 'b_width[' + idx + ']')    || '100%',
+            colapsa: _domGet(rd, 't_collapse[' + idx + ']') || 'N',
+            fields:  [],   // preenchido no próximo passo
+            });
         });
-        idx++;
-      }
 
-      // str_field: contém os campos agrupados por bloco
-      // Formato observado: precisa de log para confirmar
-      const strField = _domGet(rd, 'str_field') || '';
-      console.log('[EXTRACTOR] str_field:', strField);
-
-      return { blocks, strField };
+        return blocks;
     `);
+
+    // ── 5. Fields Configuration: nm_update_menu('app', 'FieldsEditionDef') ──
+    // Captura bloco de cada campo + label + datatype + flags (new/update/required/pk)
+    const editionResult = await injectAndRun(`
+        ${PAGE_HELPERS}
+        const ctx = _getCtx();
+        if (!ctx) return null;
+        await _callMenu(ctx.leftIframe.contentWindow, ctx.rightIframe, ['app', 'FieldsEditionDef'], 3000);
+        const rd = ctx.rightIframe.contentDocument;
+        const rows = Array.from(rd.querySelectorAll('tr'));
+
+        // Percorre linhas em ordem: Block: aparece antes dos campos do bloco
+        let blockSeq = [];       // sequência de blocos na ordem de aparição
+        let currentBlockTitle = null;
+        const fieldMap = {};     // fieldName -> dados do campo
+
+        rows.forEach(tr => {
+            // Detecta linha de bloco pelo td que contém "Block:"
+            const blockTd = Array.from(tr.querySelectorAll('td'))
+            .find(td => td.textContent.trim().startsWith('Block:'));
+            if (blockTd) {
+            currentBlockTitle = blockTd.textContent.replace('Block:', '').trim();
+            // Adiciona bloco à sequência (apenas se não for duplicado consecutivo)
+            if (!blockSeq.length || blockSeq[blockSeq.length-1].title !== currentBlockTitle) {
+                blockSeq.push({ title: currentBlockTitle, fields: [] });
+            }
+            return;
+            }
+
+            // Detecta linha de campo
+            const nameInput = tr.querySelector('input[name$="][1]"]');
+            if (!nameInput || !currentBlockTitle) return;
+            const idMatch = nameInput.name.match(/\\[(\\d+)\\]\\[1\\]/);
+            if (!idMatch) return;
+            const fId = idMatch[1];
+
+            const get = idx => {
+            const el = rd.querySelector('[name="arr_fields_edition_def[' + fId + '][' + idx + ']"]');
+            if (!el) return '';
+            if (el.tagName === 'SELECT') return el.options[el.selectedIndex]?.value || '';
+            return el.value || '';
+            };
+
+            const fieldName = get(1);
+            if (!fieldName) return;
+
+            // Adiciona campo ao bloco atual
+            const curBlk = blockSeq[blockSeq.length - 1];
+            if (curBlk) curBlk.fields.push(fieldName);
+
+            fieldMap[fieldName] = {
+            blockTitle: currentBlockTitle,
+            label:      get(2),
+            datatype:   get(3),
+            isNew:      get(4) === 'S',
+            isUpdate:   get(5) === 'S',
+            isReadOnly: get(6) === 'S',
+            isRequired: get(7) === 'S',
+            isPK:       get(8) === 'S',
+            };
+        });
+
+        return { blockSeq, fieldMap };
+    `);
+
+    
+    const blockdefResult = await injectAndRun(`
+        ${PAGE_HELPERS}
+        const ctx = _getCtx();
+        if (!ctx) return null;
+        await _callMenu(ctx.leftIframe.contentWindow, ctx.rightIframe, ['app', 'blockdef'], 3000);
+        const rd = ctx.rightIframe.contentDocument;
+
+        const nomeEls = Array.from(rd.querySelectorAll('input[name^="t_nome["]'));
+        return nomeEls.map(el => {
+            const m = el.name.match(/t_nome\\[(\\d+)\\]/);
+            if (!m) return null;
+            const idx = m[1];
+            const getV = field => {
+            const e = rd.querySelector('[name="' + field + '[' + idx + ']"]');
+            if (!e) return '';
+            if (e.tagName === 'SELECT') return e.options[e.selectedIndex]?.value || '';
+            return e.value || '';
+            };
+            // Limpa o título removendo HTML (ex: <span>*</span>)
+            const rawTitle = getV('t_texto');
+            const cleanTitle = rawTitle.replace(/<[^>]+>/g, '').trim();
+            return {
+            idx,
+            name:    el.value,
+            title:   rawTitle,
+            cleanTitle,
+            columns: parseInt(getV('l_colunas')) || 2,
+            largura: getV('b_width') || '100%',
+            colapsa: getV('t_collapse') || 'N',
+            };
+        }).filter(Boolean);
+    `);
+
 
     sendProgress(70);
 
@@ -281,51 +379,90 @@
     console.log('[EXTRACTOR] SQL:', sqlResult);
     sendProgress(82);
 
-    // ── 6. Monta blockData ────────────────────────────────────────────────────
-    let blockData = [];
-    if (blockResult?.blocks?.length > 0) {
-      blockData = blockResult.blocks;
-      // Se str_field disponível, tentar distribuir campos
-      // Por ora usa fallback com todos os campos no primeiro bloco
-      if (blockData.every(b => b.fields.length === 0)) {
-        fieldItems.forEach(f => blockData[0]?.fields.push({ rawId: f.id, name: f.name }));
-      }
-    } else {
-      blockData = [{
-        name: 'Dados', title: 'Dados', columns: 2,
-        fields: fieldItems.map(f => ({ rawId: f.id, name: f.name })),
-      }];
+    // ── 6. Monta blockData cruzando blockResult + editionResult ──────────────
+   let blockData = [];
+
+    if (editionResult?.blockSeq?.length > 0 && blockdefResult?.length > 0) {
+        const { blockSeq, fieldMap } = editionResult;
+
+        // Monta mapa de titulo limpo -> lista de blocos do blockdef
+        // (pode haver títulos duplicados, por isso é array)
+        const blockdefByTitle = {};
+        blockdefResult.forEach(b => {
+            const key = b.cleanTitle || b.name;
+            if (!blockdefByTitle[key]) blockdefByTitle[key] = [];
+            blockdefByTitle[key].push(b);
+        });
+
+        // Contador de uso por título para desambiguar duplicatas
+        const usageCount = {};
+
+        blockData = blockSeq.map(seq => {
+            // Limpa o título do FieldsEditionDef (remove * e espaços extras)
+            const cleanSeqTitle = seq.title.replace(/<[^>]+>/g,'').replace(/\s*\*\s*$/, '').trim();
+            const key = cleanSeqTitle;
+
+            const candidates = blockdefByTitle[key] || [];
+            const useIdx = usageCount[key] || 0;
+            const blkDef = candidates[useIdx] || null;
+            usageCount[key] = useIdx + 1;
+
+            return {
+            name:    blkDef?.name    || cleanSeqTitle || seq.title,
+            title:   blkDef?.cleanTitle || seq.title,
+            rawTitle: blkDef?.title  || seq.title,
+            columns: blkDef?.columns || 2,
+            largura: blkDef?.largura || '100%',
+            fields:  seq.fields.map(f => ({ rawId: f, name: f })),
+            };
+        });
+
+        } else {
+        // Fallback
+        blockData = [{
+            name: 'Dados', title: 'Dados', columns: 2,
+            fields: fieldItems.map(f => ({ rawId: f.id, name: f.name })),
+        }];
     }
 
-    // ── 7. Monta schema ───────────────────────────────────────────────────────
-    const schema = fieldItems.map(f => {
-      const d = details[f.name] || {};
-      const type = mapType(d.htmlTipo, d.tipoSql, d.tipoDado);
-      let def = d.valInicial || '';
-      if (type === 'boolean') def = (def === 'S' || def === 'true' || def === '1');
-      else if (type === 'integer') def = def ? (parseInt(def)   || 0)   : 0;
-      else if (type === 'float')   def = def ? (parseFloat(def) || 0.0) : 0.0;
-      return {
-        field:    f.name,
-        type,
-        required: d.required || false,
-        default:  type === 'string' ? (def || '') : def,
-      };
-    });
+    // ── 7. Schema — usa fieldMap para enriquecer tipos ────────────────────────
+// (mantém a lógica atual de details[] + adiciona isRequired do fieldMap)
+const fieldMap = editionResult?.fieldMap || {};
 
-    // ── 8. Monta blocks ───────────────────────────────────────────────────────
-    const blocks = blockData.map(blk => ({
-      name:    blk.name,
-      title:   blk.title,
-      columns: blk.columns,
-      fields:  blk.fields.map(bf => {
-        const d = details[bf.name] || {};
-        const input = mapInput(d.htmlTipo || 'TEXT', d.tipoDado);
-        const fObj = { name: bf.name, label: d.label || bf.name, input };
-        if (d.required) fObj.required = true;
-        return fObj;
-      }),
-    }));
+const schema = fieldItems.map(f => {
+  const d   = details[f.name] || {};
+  const ed  = fieldMap[f.name] || {};
+  const type = mapType(d.htmlTipo, d.tipoSql, d.tipoDado);
+  let def = d.valInicial || '';
+  if (type === 'boolean') def = (def === 'S' || def === 'true' || def === '1');
+  else if (type === 'integer') def = def ? (parseInt(def)   || 0)   : 0;
+  else if (type === 'float')   def = def ? (parseFloat(def) || 0.0) : 0.0;
+  return {
+    field:    f.name,
+    type,
+    required: ed.isRequired || d.required || false,
+    default:  type === 'string' ? (def || '') : def,
+  };
+});
+
+// ── 8. Monta blocks com label e input do fieldMap + details ──────────────
+const blocks = blockData.map(blk => ({
+  name:    blk.name,
+  title:   blk.title,
+  columns: blk.columns,
+  fields:  blk.fields.map(bf => {
+    const d   = details[bf.name]  || {};
+    const ed  = fieldMap[bf.name] || {};
+    const input = mapInput(d.htmlTipo || 'TEXT', d.tipoDado);
+    // Label: prefere o do FieldsEditionDef (ed.label), depois o do campo individual (d.label)
+    const label = (ed.label || d.label || bf.name).replace(/[{}]/g, '');
+    const fObj = { name: bf.name, label, input };
+    if (ed.isRequired || d.required) fObj.required  = true;
+    if (ed.isReadOnly)               fObj.readOnly   = true;
+    if (ed.isPK)                     fObj.pk         = true;
+    return fObj;
+  }),
+}));
 
     const base   = config.servicesPath || ('modules/' + moduleNamePascal);
     const sp     = toSnake(moduleNamePascal);

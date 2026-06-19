@@ -17,6 +17,10 @@ function sendMessageAsync(tabId, message) {
   });
 }
 
+function isInjectableUrl(url) {
+  return /^https?:\/\//i.test(url || '');
+}
+
 // Sends a message to the tab's content script, injecting content.js first if it
 // isn't there yet (e.g. the page was open before the extension was loaded).
 async function sendToTab(tabId, message) {
@@ -24,8 +28,18 @@ async function sendToTab(tabId, message) {
     return await sendMessageAsync(tabId, message);
   } catch (e) {
     if (!/Receiving end does not exist|Could not establish connection/i.test(e.message)) throw e;
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-    return await sendMessageAsync(tabId, message);
+
+    const tab = await chrome.tabs.get(tabId);
+    if (!isInjectableUrl(tab?.url)) {
+      throw new Error('Abra uma página HTTP/HTTPS do ScriptCase antes de capturar.');
+    }
+
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      return await sendMessageAsync(tabId, message);
+    } catch (injectErr) {
+      throw new Error('Não consegui conectar ao conteúdo da página. Recarregue a aba do ScriptCase e tente novamente.');
+    }
   }
 }
 
@@ -40,6 +54,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function autoDetectModule() {
   if (!currentTab) return;
+  if (!isInjectableUrl(currentTab.url)) {
+    document.getElementById('moduleNameDisplay').textContent = 'Abra uma aba do ScriptCase';
+    return;
+  }
   try {
     const resp = await sendToTab(currentTab.id, { type: 'GET_MODULE_NAME' });
     if (resp && resp.success) {
@@ -74,6 +92,10 @@ function setProgress(v) {
 
 async function startCapture() {
   if (!currentTab) { setStatus('Nenhuma aba ativa encontrada.', 'error'); return; }
+  if (!isInjectableUrl(currentTab.url)) {
+    setStatus('Abra uma página HTTP/HTTPS do ScriptCase antes de capturar.', 'error');
+    return;
+  }
 
   const config = {
     kind:         document.getElementById('kindSelect').value,
