@@ -1,38 +1,41 @@
 // content.js - ScriptCase Module Extractor v3.0
-(function () {
-  'use strict';
+(function() {
+    'use strict';
 
-  if (window.__scModuleExtractorInjected) return;
-  window.__scModuleExtractorInjected = true;
+    if (window.__scModuleExtractorInjected) return;
+    window.__scModuleExtractorInjected = true;
 
-  // ─────────────────────────────────────────────
-  // INJEÇÃO DE SCRIPT NA PÁGINA
-  // O content script roda em contexto isolado e não pode chamar
-  // funções da página (como nm_update_menu). A solução é injetar
-  // um <script> na página principal que executa no contexto correto
-  // e retorna o resultado via window.postMessage.
-  // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // INJEÇÃO DE SCRIPT NA PÁGINA
+    // O content script roda em contexto isolado e não pode chamar
+    // funções da página (como nm_update_menu). A solução é injetar
+    // um <script> na página principal que executa no contexto correto
+    // e retorna o resultado via window.postMessage.
+    // ─────────────────────────────────────────────
 
     function injectAndRun(code) {
-  return new Promise((resolve, reject) => {
-    const requestId = '__sc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    chrome.runtime.sendMessage(
-      { type: 'EXEC_IN_PAGE', code, requestId },
-      (res) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (res?.success) resolve(res.result);
-        else reject(new Error(res?.error || 'EXEC_IN_PAGE falhou'));
-      }
-    );
-  });
-}
+        return new Promise((resolve, reject) => {
+            const requestId = '__sc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+            chrome.runtime.sendMessage({
+                    type: 'EXEC_IN_PAGE',
+                    code,
+                    requestId
+                },
+                (res) => {
+                    if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+                    if (res?.success) resolve(res.result);
+                    else reject(new Error(res?.error || 'EXEC_IN_PAGE falhou'));
+                }
+            );
+        });
+    }
 
-  // ─────────────────────────────────────────────
-  // HELPERS que rodam DENTRO da página via injectAndRun
-  // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // HELPERS que rodam DENTRO da página via injectAndRun
+    // ─────────────────────────────────────────────
 
-  // Retorna os dados básicos dos iframes (executa na página)
-  const PAGE_HELPERS = `
+    // Retorna os dados básicos dos iframes (executa na página)
+    const PAGE_HELPERS = `
     function _getCtx() {
       const main = document.getElementById('nmFrmScase');
       if (!main) return null;
@@ -60,105 +63,143 @@
     }
     function _delay(ms) { return new Promise(r => setTimeout(r, ms)); }
     async function _callMenu(leftWin, rightIframe, args, waitMs = 1800) {
-      const rd0 = rightIframe.contentDocument;
-      const snap0 = _domGet(rd0,'Label') + '|' + _domGet(rd0,'form_edit') + '|' + _domGet(rd0,'NomeTabela');
+      // Usa formAction (rand= muda a cada carga) como sinal confiável de mudança
+      const snap0 = rightIframe.contentDocument
+        .querySelector('form[name="form_edit"]')?.action || Math.random();
       leftWin.nm_update_menu(...args);
       const start = Date.now();
       while (Date.now() - start < waitMs + 2000) {
         await _delay(80);
-        const rd = rightIframe.contentDocument;
-        const snap = _domGet(rd,'Label') + '|' + _domGet(rd,'form_edit') + '|' + _domGet(rd,'NomeTabela');
-        if (snap !== snap0 || Date.now() - start > waitMs) break;
+        const snap = rightIframe.contentDocument
+          .querySelector('form[name="form_edit"]')?.action || '';
+        if (snap !== snap0) break;
+        if (Date.now() - start > waitMs) break;
       }
-      await _delay(150);
+      await _delay(200);
     }
   `;
 
-  // ─────────────────────────────────────────────
-  // UTILITÁRIOS (content script)
-  // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // UTILITÁRIOS (content script)
+    // ─────────────────────────────────────────────
 
-  function toPascal(s) {
-    if (!s) return '';
-    return s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
-  }
-  function toSnake(s) {
-    if (!s) return '';
-    return s.replace(/([A-Z])/g, (m, c, i) => (i > 0 ? '_' : '') + c.toLowerCase());
-  }
-
-  function mapType(html, sql, tipoDado) {
-    const h = (html     || '').toUpperCase();
-    const s = (sql      || '').toLowerCase();
-    const d = (tipoDado || '').toUpperCase();
-    const dateTypes   = new Set(['DATA','HORA','DATAHORA']);
-    const nonDateHtml = new Set(['TEXT','TEXTAREA','PASSWORD','CHECKBOX','CHKBOX','SELECT','RADIO','NUMEROEDT','DECIMALEDT','LOOKUP']);
-    if (dateTypes.has(d) && !nonDateHtml.has(h)) {
-      if (d === 'DATA')     return 'date';
-      if (d === 'HORA')     return 'time';
-      if (d === 'DATAHORA') return 'datetime';
+    function toPascal(s) {
+        if (!s) return '';
+        return s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
     }
-    if (h === 'CHECKBOX' || h === 'CHKBOX')                                     return 'boolean';
-    if (s === 'integer' || s === 'bigint' || s === 'int' || s === 'smallint')   return 'integer';
-    if (s === 'decimal' || s === 'float'  || s === 'double' || s === 'numeric') return 'float';
-    if (h === 'NUMEROEDT'  || h === 'NUMERO')                                   return 'integer';
-    if (h === 'DECIMALEDT' || h === 'DECIMAL')                                  return 'float';
-    if (h === 'DATE')                                                            return 'date';
-    if (h === 'DATETIME')                                                        return 'datetime';
-    if (h === 'TIME')                                                            return 'time';
-    if (d === 'NUMEROEDT'  || d === 'NUMERO')                                   return 'integer';
-    if (d === 'DECIMAL'    || d === 'VALOR')                                    return 'float';
-    return 'string';
-  }
 
-  function mapInput(html, tipoDado) {
-    const d = (tipoDado || '').toUpperCase();
-    const semanticMap = {
-      DATA:'date', HORA:'time', DATAHORA:'datetime',
-      NUMEROEDT:'text', DECIMAL:'text', VALOR:'text',
-      MULTITEXTO:'textarea', CIC:'text', CNPJ:'text',
-      CICCNPJ:'text', TPCICCNPJ:'text', CEP:'text',
-      EMAIL:'text', URL:'text', CORHTML:'text',
-      EDITOR_HTML:'textarea', FORM_IMAGE_HTML:'file', FORM_LABEL:'label',
-    };
-    if (d && semanticMap[d]) return semanticMap[d];
-    const map = {
-      TEXT:'text', TEXTAREA:'textarea', PASSWORD:'password',
-      DATE:'date', DATETIME:'datetime', TIME:'time',
-      SELECT:'select', RADIO:'radio', CHECKBOX:'checkbox', CHKBOX:'checkbox',
-      NUMEROEDT:'text', NUMERO:'text', DECIMALEDT:'text', DECIMAL:'text',
-      LOOKUP:'select2', CPFCNPJ:'text', CEP:'text', FILE:'file', IMAGE:'file',
-      HIDDEN:'hidden', LABEL:'label', HYPERLINK:'link', EMAIL:'text', URL:'text',
-    };
-    return map[(html || '').toUpperCase()] || 'text';
-  }
+    function toSnake(s) {
+        if (!s) return '';
+        return s.replace(/([A-Z])/g, (m, c, i) => (i > 0 ? '_' : '') + c.toLowerCase());
+    }
 
-  function sendProgress(v) {
-    try { chrome.runtime.sendMessage({ type: 'progress', value: v }); } catch(e) {}
-  }
+    function mapType(html, sql, tipoDado) {
+        const h = (html || '').toUpperCase();
+        const s = (sql || '').toLowerCase();
+        const d = (tipoDado || '').toUpperCase();
+        const dateTypes = new Set(['DATA', 'HORA', 'DATAHORA']);
+        const nonDateHtml = new Set(['TEXT', 'TEXTAREA', 'PASSWORD', 'CHECKBOX', 'CHKBOX', 'SELECT', 'RADIO', 'NUMEROEDT', 'DECIMALEDT', 'LOOKUP']);
+        if (dateTypes.has(d) && !nonDateHtml.has(h)) {
+            if (d === 'DATA') return 'date';
+            if (d === 'HORA') return 'time';
+            if (d === 'DATAHORA') return 'datetime';
+        }
+        if (h === 'CHECKBOX' || h === 'CHKBOX') return 'boolean';
+        if (s === 'integer' || s === 'bigint' || s === 'int' || s === 'smallint') return 'integer';
+        if (s === 'decimal' || s === 'float' || s === 'double' || s === 'numeric') return 'float';
+        if (h === 'NUMEROEDT' || h === 'NUMERO') return 'integer';
+        if (h === 'DECIMALEDT' || h === 'DECIMAL') return 'float';
+        if (h === 'DATE') return 'date';
+        if (h === 'DATETIME') return 'datetime';
+        if (h === 'TIME') return 'time';
+        if (d === 'NUMEROEDT' || d === 'NUMERO') return 'integer';
+        if (d === 'DECIMAL' || d === 'VALOR') return 'float';
+        return 'string';
+    }
 
-  // ─────────────────────────────────────────────
-  // EXTRAÇÃO PRINCIPAL — tudo via injectAndRun
-  // ─────────────────────────────────────────────
+    function mapInput(html, tipoDado) {
+        const d = (tipoDado || '').toUpperCase();
+        const semanticMap = {
+            DATA: 'date',
+            HORA: 'time',
+            DATAHORA: 'datetime',
+            NUMEROEDT: 'text',
+            DECIMAL: 'text',
+            VALOR: 'text',
+            MULTITEXTO: 'textarea',
+            CIC: 'text',
+            CNPJ: 'text',
+            CICCNPJ: 'text',
+            TPCICCNPJ: 'text',
+            CEP: 'text',
+            EMAIL: 'text',
+            URL: 'text',
+            CORHTML: 'text',
+            EDITOR_HTML: 'textarea',
+            FORM_IMAGE_HTML: 'file',
+            FORM_LABEL: 'label',
+        };
+        if (d && semanticMap[d]) return semanticMap[d];
+        const map = {
+            TEXT: 'text',
+            TEXTAREA: 'textarea',
+            PASSWORD: 'password',
+            DATE: 'date',
+            DATETIME: 'datetime',
+            TIME: 'time',
+            SELECT: 'select',
+            RADIO: 'radio',
+            CHECKBOX: 'checkbox',
+            CHKBOX: 'checkbox',
+            NUMEROEDT: 'text',
+            NUMERO: 'text',
+            DECIMALEDT: 'text',
+            DECIMAL: 'text',
+            LOOKUP: 'select2',
+            CPFCNPJ: 'text',
+            CEP: 'text',
+            FILE: 'file',
+            IMAGE: 'file',
+            HIDDEN: 'hidden',
+            LABEL: 'label',
+            HYPERLINK: 'link',
+            EMAIL: 'text',
+            URL: 'text',
+        };
+        return map[(html || '').toUpperCase()] || 'text';
+    }
 
-  async function extract(config) {
+    function sendProgress(v) {
+        try {
+            chrome.runtime.sendMessage({
+                type: 'progress',
+                value: v
+            });
+        } catch (e) {}
+    }
 
-    // ── 1. Verifica se ScriptCase está aberto ─────────────────────────────────
-    const check = await injectAndRun(`
+    // ─────────────────────────────────────────────
+    // EXTRAÇÃO PRINCIPAL — tudo via injectAndRun
+    // ─────────────────────────────────────────────
+
+    async function extract(config) {
+
+        // ── 1. Verifica se ScriptCase está aberto ─────────────────────────────────
+        const check = await injectAndRun(`
       ${PAGE_HELPERS}
       const ctx = _getCtx();
       if (!ctx) return { ok: false };
       return { ok: true, moduleName: ctx.moduleName };
     `);
-    if (!check?.ok) throw new Error('ScriptCase não encontrado. Abra um módulo no ScriptCase.');
+        if (!check?.ok) throw new Error('ScriptCase não encontrado. Abra um módulo no ScriptCase.');
 
-    const moduleName      = check.moduleName;
-    const moduleNamePascal = config.moduleName || toPascal(moduleName);
-    const prefix          = config.prefix || toSnake(moduleNamePascal);
-    sendProgress(5);
+        const moduleName = check.moduleName;
+        const moduleNamePascal = config.moduleName || toPascal(moduleName);
+        const prefix = config.prefix || toSnake(moduleNamePascal);
+        sendProgress(5);
 
-    // ── 2. Expande fields_tit e coleta lista de campos ────────────────────────
-    const fieldsResult = await injectAndRun(`
+        // ── 2. Expande fields_tit e coleta lista de campos ────────────────────────
+        const fieldsResult = await injectAndRun(`
       ${PAGE_HELPERS}
       const ctx = _getCtx();
       if (!ctx) return [];
@@ -192,44 +233,89 @@
       }).filter(f => f.name && !f.name.startsWith('['));
     `);
 
-    const fieldItems = Array.isArray(fieldsResult) ? fieldsResult : [];
-    console.log('[EXTRACTOR] Campos:', fieldItems.map(f => `${f.id}:${f.name}`));
-    sendProgress(12);
+        const fieldItems = Array.isArray(fieldsResult) ? fieldsResult : [];
+        console.log('[EXTRACTOR] Campos:', fieldItems.map(f => `${f.id}:${f.name}`));
+        sendProgress(12);
 
-    // ── 3. Coleta detalhes de cada campo via nm_update_menu ───────────────────
-    const details = {};
-    const toCapture = fieldItems.slice(0, 60);
+        // ── 3. Coleta detalhes de cada campo via nm_update_menu ───────────────────
+        const details = {};
+        const toCapture = fieldItems.slice(0, 60);
+        const OPTION_INPUT_TYPES = new Set(['SELECT', 'RADIO', 'CHECKBOX', 'CHKBOX', 'SELECT2', 'LOOKUP']);
 
-    for (let i = 0; i < toCapture.length; i++) {
-      const f = toCapture[i];
-      const fieldData = await injectAndRun(`
-        ${PAGE_HELPERS}
-        const ctx = _getCtx();
-        if (!ctx) return null;
-        const leftWin  = ctx.leftIframe.contentWindow;
-        const rightIfr = ctx.rightIframe;
-        const args = ${JSON.stringify(f.args)};
-        if (!args) return null;
-        await _callMenu(leftWin, rightIfr, args, 2000);
-        const rd = rightIfr.contentDocument;
-        return {
-          htmlTipo:   _domGet(rd, 'Html_Tipo')   || 'TEXT',
-          tipoSql:    _domGet(rd, 'Tipo_Sql')    || 'varchar',
-          tipoDado:   _domGet(rd, 'Tipo_Dado_P') || _domGet(rd, 'hid_sel_type_aux') || '',
-          label:      (_domGet(rd, 'Label') || ${JSON.stringify(f.name)}).replace(/[{}]/g, ''),
-          valInicial: _domGet(rd, 'Val_Inicial') || '',
-          required:   _domGet(rd, 'form_val_tipo') === 'S',
-        };
-      `);
-      if (fieldData) {
-        details[f.name] = { name: f.name, ...fieldData };
-        console.log('[EXTRACTOR]', f.name, '| label:', fieldData.label, '| tipo:', fieldData.htmlTipo, '| tipoDado:', fieldData.tipoDado);
+        for (let i = 0; i < toCapture.length; i++) {
+            const f = toCapture[i];
+            const fieldData = await injectAndRun(`
+${PAGE_HELPERS}
+      const ctx = _getCtx();
+      if (!ctx) return null;
+      const leftWin  = ctx.leftIframe.contentWindow;
+      const rightIfr = ctx.rightIframe;
+      const args = ${JSON.stringify(f.args)};
+      if (!args) return null;
+      await _callMenu(leftWin, rightIfr, args, 2000);
+      const rd = rightIfr.contentDocument;
+
+      // Nomes reais no DOM: Html_Tipo, Tipo_Sql, Tipo_Dado_P, Val_Inicial, form_val_tipo
+      const htmlTipo   = _domGet(rd, 'Html_Tipo')    || _domGet(rd, 'hid_sel_type_aux') || 'TEXT';
+      const tipoSql    = _domGet(rd, 'Tipo_Sql')     || 'varchar';
+      const tipoDado   = _domGet(rd, 'Tipo_Dado_P')  || _domGet(rd, 'Tipo_Dado_S') || '';
+      const label      = (_domGet(rd, 'Label') || ${JSON.stringify(f.name)}).replace(/[{}]/g, '');
+      const valInicial = _domGet(rd, 'Val_Inicial')  || '';
+      const required   = _domGet(rd, 'form_val_tipo') === 'S';
+
+      // ── Captura options para SELECT / SELECT2 / RADIO / CHECKBOX ──────
+      const OPTION_TYPES = new Set(['SELECT','RADIO','CHECKBOX','CHKBOX','SELECT2','LOOKUP']);
+      let options   = null;
+      let lookupSql = null;
+
+      if (OPTION_TYPES.has(htmlTipo.toUpperCase()) || OPTION_TYPES.has(tipoDado.toUpperCase())) {
+        const lookupMethod = _domGet(rd, 'Lookup_Edit'); // 'M' = Manual, 'A' = Automático
+
+        if (lookupMethod === 'M') {
+          // Lookup manual: lê def_edit_js_list
+          // Formato do value: "label?#?value?#?image?#?isDefault(S/N)?#?groupname?#?"
+          const listSel = rd.querySelector('[name="def_edit_js_list"]');
+          if (listSel && listSel.options.length > 0) {
+            options = Array.from(listSel.options).map(opt => {
+              const parts = opt.value.split('?#?');
+              return {
+                label:     (parts[0] || '').replace(/[{}]/g, '').trim(),
+                value:     (parts[1] || '').trim(),
+                isDefault: (parts[3] || 'N') === 'S',
+              };
+            }).filter(o => o.value !== '');
+          }
+
+        } else if (lookupMethod === 'A') {
+          // Lookup automático: captura a query SQL
+          const sqlEl = rd.querySelector('[name="def_edit_select"]');
+          if (sqlEl && sqlEl.value.trim()) {
+            lookupSql = sqlEl.value.trim();
+          }
+        }
       }
-      sendProgress(12 + Math.round((i + 1) / toCapture.length * 50));
-    }
 
-    // ── 4. Blocks Settings: nm_update_menu('app', 'blockdef') ────────────────
-    const blockResult = await injectAndRun(`
+      return { htmlTipo, tipoSql, tipoDado, label, valInicial, required, options, lookupSql };
+    `);
+
+            if (fieldData) {
+                details[f.name] = {
+                    name: f.name,
+                    ...fieldData
+                };
+                console.log(
+                    '[EXTRACTOR]', f.name,
+                    '| label:', fieldData.label,
+                    '| tipo:', fieldData.htmlTipo,
+                    '| options:', fieldData.options ? fieldData.options.length + 'x' : '-',
+                    '| sql:', fieldData.lookupSql ? 'SQL' : '-'
+                );
+            }
+            sendProgress(12 + Math.round((i + 1) / toCapture.length * 50));
+        }
+
+        // ── 4. Blocks Settings: nm_update_menu('app', 'blockdef') ────────────────
+        const blockResult = await injectAndRun(`
         ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -260,9 +346,9 @@
         return blocks;
     `);
 
-    // ── 5. Fields Configuration: nm_update_menu('app', 'FieldsEditionDef') ──
-    // Captura bloco de cada campo + label + datatype + flags (new/update/required/pk)
-    const editionResult = await injectAndRun(`
+        // ── 5. Fields Configuration: nm_update_menu('app', 'FieldsEditionDef') ──
+        // Captura bloco de cada campo + label + datatype + flags (new/update/required/pk)
+        const editionResult = await injectAndRun(`
         ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -324,8 +410,8 @@
         return { blockSeq, fieldMap };
     `);
 
-    
-    const blockdefResult = await injectAndRun(`
+
+        const blockdefResult = await injectAndRun(`
         ${PAGE_HELPERS}
         const ctx = _getCtx();
         if (!ctx) return null;
@@ -359,10 +445,10 @@
     `);
 
 
-    sendProgress(70);
+        sendProgress(70);
 
-    // ── 5. Coleta SQL ─────────────────────────────────────────────────────────
-    const sqlResult = await injectAndRun(`
+        // ── 5. Coleta SQL ─────────────────────────────────────────────────────────
+        const sqlResult = await injectAndRun(`
       ${PAGE_HELPERS}
       const ctx = _getCtx();
       if (!ctx) return null;
@@ -376,150 +462,205 @@
         formParams: _domGet(rd, 'Form_Params') || '',
       };
     `);
-    console.log('[EXTRACTOR] SQL:', sqlResult);
-    sendProgress(82);
+        console.log('[EXTRACTOR] SQL:', sqlResult);
+        sendProgress(82);
 
-    // ── 6. Monta blockData cruzando blockResult + editionResult ──────────────
-   let blockData = [];
+        // ── 6. Monta blockData cruzando blockResult + editionResult ──────────────
+        let blockData = [];
 
-    if (editionResult?.blockSeq?.length > 0 && blockdefResult?.length > 0) {
-        const { blockSeq, fieldMap } = editionResult;
+        if (editionResult?.blockSeq?.length > 0 && blockdefResult?.length > 0) {
+            const {
+                blockSeq,
+                fieldMap
+            } = editionResult;
 
-        // Monta mapa de titulo limpo -> lista de blocos do blockdef
-        // (pode haver títulos duplicados, por isso é array)
-        const blockdefByTitle = {};
-        blockdefResult.forEach(b => {
-            const key = b.cleanTitle || b.name;
-            if (!blockdefByTitle[key]) blockdefByTitle[key] = [];
-            blockdefByTitle[key].push(b);
-        });
+            // Monta mapa de titulo limpo -> lista de blocos do blockdef
+            // (pode haver títulos duplicados, por isso é array)
+            const blockdefByTitle = {};
+            blockdefResult.forEach(b => {
+                const key = b.cleanTitle || b.name;
+                if (!blockdefByTitle[key]) blockdefByTitle[key] = [];
+                blockdefByTitle[key].push(b);
+            });
 
-        // Contador de uso por título para desambiguar duplicatas
-        const usageCount = {};
+            // Contador de uso por título para desambiguar duplicatas
+            const usageCount = {};
 
-        blockData = blockSeq.map(seq => {
-            // Limpa o título do FieldsEditionDef (remove * e espaços extras)
-            const cleanSeqTitle = seq.title.replace(/<[^>]+>/g,'').replace(/\s*\*\s*$/, '').trim();
-            const key = cleanSeqTitle;
+            blockData = blockSeq.map(seq => {
+                // Limpa o título do FieldsEditionDef (remove * e espaços extras)
+                const cleanSeqTitle = seq.title.replace(/<[^>]+>/g, '').replace(/\s*\*\s*$/, '').trim();
+                const key = cleanSeqTitle;
 
-            const candidates = blockdefByTitle[key] || [];
-            const useIdx = usageCount[key] || 0;
-            const blkDef = candidates[useIdx] || null;
-            usageCount[key] = useIdx + 1;
+                const candidates = blockdefByTitle[key] || [];
+                const useIdx = usageCount[key] || 0;
+                const blkDef = candidates[useIdx] || null;
+                usageCount[key] = useIdx + 1;
 
-            return {
-            name:    blkDef?.name    || cleanSeqTitle || seq.title,
-            title:   blkDef?.cleanTitle || seq.title,
-            rawTitle: blkDef?.title  || seq.title,
-            columns: blkDef?.columns || 2,
-            largura: blkDef?.largura || '100%',
-            fields:  seq.fields.map(f => ({ rawId: f, name: f })),
-            };
-        });
+                return {
+                    name: blkDef?.name || cleanSeqTitle || seq.title,
+                    title: blkDef?.cleanTitle || seq.title,
+                    rawTitle: blkDef?.title || seq.title,
+                    columns: blkDef?.columns || 2,
+                    largura: blkDef?.largura || '100%',
+                    fields: seq.fields.map(f => ({
+                        rawId: f,
+                        name: f
+                    })),
+                };
+            });
 
         } else {
-        // Fallback
-        blockData = [{
-            name: 'Dados', title: 'Dados', columns: 2,
-            fields: fieldItems.map(f => ({ rawId: f.id, name: f.name })),
-        }];
+            // Fallback
+            blockData = [{
+                name: 'Dados',
+                title: 'Dados',
+                columns: 2,
+                fields: fieldItems.map(f => ({
+                    rawId: f.id,
+                    name: f.name
+                })),
+            }];
+        }
+
+        // ── 7. Schema — usa fieldMap para enriquecer tipos ────────────────────────
+        // (mantém a lógica atual de details[] + adiciona isRequired do fieldMap)
+        const fieldMap = editionResult?.fieldMap || {};
+
+        const schema = fieldItems.map(f => {
+            const d = details[f.name] || {};
+            const ed = fieldMap[f.name] || {};
+            const type = mapType(d.htmlTipo, d.tipoSql, d.tipoDado);
+            let def = d.valInicial || '';
+            if (type === 'boolean') def = (def === 'S' || def === 'true' || def === '1');
+            else if (type === 'integer') def = def ? (parseInt(def) || 0) : 0;
+            else if (type === 'float') def = def ? (parseFloat(def) || 0.0) : 0.0;
+
+            const entry = {
+                field: f.name,
+                type,
+                required: ed.isRequired || d.required || false,
+                default: type === 'string' ? (def || '') : def,
+            };
+            if (d.options && d.options.length > 0) entry.options = d.options;
+            if (d.lookupSql) entry.lookupSql = d.lookupSql;
+            return entry;
+        });
+
+        // ── 8. Monta blocks com label e input do fieldMap + details ──────────────
+        const blocks = blockData.map(blk => ({
+            name: blk.name,
+            title: blk.title,
+            columns: blk.columns,
+            fields: blk.fields.map(bf => {
+                const d = details[bf.name] || {};
+                const ed = fieldMap[bf.name] || {};
+                const input = mapInput(d.htmlTipo || 'TEXT', d.tipoDado);
+                const label = (ed.label || d.label || bf.name).replace(/[{}]/g, '');
+                const fObj = {
+                    name: bf.name,
+                    label,
+                    input
+                };
+                if (ed.isRequired || d.required) fObj.required = true;
+                if (ed.isReadOnly) fObj.readOnly = true;
+                if (ed.isPK) fObj.pk = true;
+                if (d.options && d.options.length > 0) fObj.options = d.options;
+                if (d.lookupSql) fObj.lookupSql = d.lookupSql;
+                return fObj;
+            }),
+        }));
+
+        const base = config.servicesPath || ('modules/' + moduleNamePascal);
+        const sp = toSnake(moduleNamePascal);
+        const params = config.params ?
+            config.params.split(',').map(p => p.trim()).filter(Boolean) :
+            (sqlResult?.formParams || '').split(',').map(p => p.trim()).filter(Boolean);
+
+        sendProgress(100);
+
+        return {
+            kind: config.kind || 'form',
+            module: {
+                name: moduleNamePascal,
+                title: config.title || moduleNamePascal,
+                subtitle: config.subtitle || '',
+                prefix,
+                connection: sqlResult?.connection || '',
+                table: sqlResult?.table || '',
+                params,
+                parentModule: config.parentModule || '',
+                assets: config.assets ? config.assets.split(',').map(a => a.trim()).filter(Boolean) : [],
+            },
+            services: {
+                get: {
+                    name: sp + '_get',
+                    path: base + '/' + sp + '_get'
+                },
+                insert: {
+                    name: sp + '_insert',
+                    path: base + '/' + sp + '_insert'
+                },
+                update: {
+                    name: sp + '_update',
+                    path: base + '/' + sp + '_update'
+                },
+                delete: {
+                    name: sp + '_delete',
+                    path: base + '/' + sp + '_delete'
+                },
+            },
+            schema,
+            blocks,
+            tabs: {
+                enabled: false
+            },
+        };
     }
 
-    // ── 7. Schema — usa fieldMap para enriquecer tipos ────────────────────────
-// (mantém a lógica atual de details[] + adiciona isRequired do fieldMap)
-const fieldMap = editionResult?.fieldMap || {};
+    // ─────────────────────────────────────────────
+    // LISTENER
+    // ─────────────────────────────────────────────
 
-const schema = fieldItems.map(f => {
-  const d   = details[f.name] || {};
-  const ed  = fieldMap[f.name] || {};
-  const type = mapType(d.htmlTipo, d.tipoSql, d.tipoDado);
-  let def = d.valInicial || '';
-  if (type === 'boolean') def = (def === 'S' || def === 'true' || def === '1');
-  else if (type === 'integer') def = def ? (parseInt(def)   || 0)   : 0;
-  else if (type === 'float')   def = def ? (parseFloat(def) || 0.0) : 0.0;
-  return {
-    field:    f.name,
-    type,
-    required: ed.isRequired || d.required || false,
-    default:  type === 'string' ? (def || '') : def,
-  };
-});
-
-// ── 8. Monta blocks com label e input do fieldMap + details ──────────────
-const blocks = blockData.map(blk => ({
-  name:    blk.name,
-  title:   blk.title,
-  columns: blk.columns,
-  fields:  blk.fields.map(bf => {
-    const d   = details[bf.name]  || {};
-    const ed  = fieldMap[bf.name] || {};
-    const input = mapInput(d.htmlTipo || 'TEXT', d.tipoDado);
-    // Label: prefere o do FieldsEditionDef (ed.label), depois o do campo individual (d.label)
-    const label = (ed.label || d.label || bf.name).replace(/[{}]/g, '');
-    const fObj = { name: bf.name, label, input };
-    if (ed.isRequired || d.required) fObj.required  = true;
-    if (ed.isReadOnly)               fObj.readOnly   = true;
-    if (ed.isPK)                     fObj.pk         = true;
-    return fObj;
-  }),
-}));
-
-    const base   = config.servicesPath || ('modules/' + moduleNamePascal);
-    const sp     = toSnake(moduleNamePascal);
-    const params = config.params
-      ? config.params.split(',').map(p => p.trim()).filter(Boolean)
-      : (sqlResult?.formParams || '').split(',').map(p => p.trim()).filter(Boolean);
-
-    sendProgress(100);
-
-    return {
-      kind: config.kind || 'form',
-      module: {
-        name:         moduleNamePascal,
-        title:        config.title    || moduleNamePascal,
-        subtitle:     config.subtitle || '',
-        prefix,
-        connection:   sqlResult?.connection || '',
-        table:        sqlResult?.table      || '',
-        params,
-        parentModule: config.parentModule || '',
-        assets:       config.assets ? config.assets.split(',').map(a => a.trim()).filter(Boolean) : [],
-      },
-      services: {
-        get:    { name: sp + '_get',    path: base + '/' + sp + '_get'    },
-        insert: { name: sp + '_insert', path: base + '/' + sp + '_insert' },
-        update: { name: sp + '_update', path: base + '/' + sp + '_update' },
-        delete: { name: sp + '_delete', path: base + '/' + sp + '_delete' },
-      },
-      schema,
-      blocks,
-      tabs: { enabled: false },
-    };
-  }
-
-  // ─────────────────────────────────────────────
-  // LISTENER
-  // ─────────────────────────────────────────────
-
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'PING') { sendResponse({ success: true }); return true; }
-    if (msg.type === 'GET_MODULE_NAME') {
-      injectAndRun(`
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (msg.type === 'PING') {
+            sendResponse({
+                success: true
+            });
+            return true;
+        }
+        if (msg.type === 'GET_MODULE_NAME') {
+            injectAndRun(`
         ${PAGE_HELPERS}
         const ctx = _getCtx();
         return ctx ? { ok: true, moduleName: ctx.moduleName } : { ok: false };
       `).then(r => {
-        if (r?.ok) sendResponse({ success: true, name: toPascal(r.moduleName), raw: r.moduleName });
-        else       sendResponse({ success: false, error: 'ScriptCase não encontrado' });
-      }).catch(e => sendResponse({ success: false, error: e.message }));
-      return true;
-    }
-    if (msg.type === 'EXTRACT') {
-      extract(msg.config)
-        .then(data => sendResponse({ success: true, data }))
-        .catch(err  => sendResponse({ success: false, error: err.message }));
-      return true;
-    }
-  });
+                if (r?.ok) sendResponse({
+                    success: true,
+                    name: toPascal(r.moduleName),
+                    raw: r.moduleName
+                });
+                else sendResponse({
+                    success: false,
+                    error: 'ScriptCase não encontrado'
+                });
+            }).catch(e => sendResponse({
+                success: false,
+                error: e.message
+            }));
+            return true;
+        }
+        if (msg.type === 'EXTRACT') {
+            extract(msg.config)
+                .then(data => sendResponse({
+                    success: true,
+                    data
+                }))
+                .catch(err => sendResponse({
+                    success: false,
+                    error: err.message
+                }));
+            return true;
+        }
+    });
 
 })();
